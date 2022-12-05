@@ -50,6 +50,7 @@ byte sine_xc; // offset point for interupt
 byte sine_yc;
 byte next_x;
 byte next_y;
+word next_addr;
 
 
 /*{pal:"nes",layout:"nes"}*/
@@ -70,7 +71,10 @@ void __fastcall__ sine_pos_next(void) {
     next_x = (sine[sine_xc] >> 2) - 52;
     //if (sine_xc & 0x07) sine_yc++;
     sine_yc += 7;
-    next_y = sine[sine_yc] >> 6;
+    next_y = sine[sine_yc] >> 4;
+  next_addr = 0x2000;
+  next_addr |= (next_y << 6);
+  next_addr &= 0x23bf;
 }
 
 void __fastcall__ irq_nmi_callback(void) {
@@ -81,12 +85,14 @@ void __fastcall__ irq_nmi_callback(void) {
 //    scroll(sine[irq_count], sine[irq_count]);
     //PPU.scroll = next_x;
     //PPU.scroll = next_y;
-    //scroll(next_x, next_y);
+    scroll(next_x, next_y);
     //PEEK(PPU_STATUS);
-    POKE(PPU_ADDR, 0x20);
-    //POKE(PPU_ADDR, 0xc0);
+    //POKE(PPU_ADDR, 0x20);
+    //POKE(PPU_ADDR, 0x40);
+    //POKEW(PPU_ADDR, next_addr);
     POKE(PPU_SCROLL, next_x);
     POKE(PPU_SCROLL, next_y);
+    //POKE(PPU_CTRL, 0x40);
     /*
 	bit PPU_STATUS
         lda scroll_x_hi
@@ -117,6 +123,8 @@ void __fastcall__ irq_nmi_callback(void) {
     if (sine_xo & 0x01) sine_yo++;
     sine_yc = sine_yo;
     sine_pos_next();
+    POKE(PPU_SCROLL, next_x);
+    POKE(PPU_SCROLL, next_y);
   }
 }
 
@@ -137,7 +145,7 @@ void main(void) {
   // Mirroring - horizontal
   POKE(0xA000, 0x01);
   // set up MMC3 IRQs every 8 scanlines
-  MMC3_IRQ_SET_VALUE(31);
+  MMC3_IRQ_SET_VALUE(7);
   MMC3_IRQ_RELOAD();
   MMC3_IRQ_ENABLE();
   // enable CPU IRQ
