@@ -50,7 +50,9 @@ byte sine_xc; // offset point for interupt
 byte sine_yc;
 byte next_x;
 byte next_y;
-word next_addr;
+byte next_addr;
+byte next_addr_hi;
+byte next_addr_lo;
 
 
 /*{pal:"nes",layout:"nes"}*/
@@ -69,12 +71,16 @@ void __fastcall__ sine_pos_next(void) {
     // advance to next scroll value
     sine_xc += 11;
     next_x = (sine[sine_xc] >> 2) - 52;
+  //next_x = 0;
     //if (sine_xc & 0x07) sine_yc++;
-    sine_yc += 7;
-    next_y = sine[sine_yc] >> 4;
-  next_addr = 0x2000;
-  next_addr |= (next_y << 6);
-  next_addr &= 0x23bf;
+    sine_yc += 17;
+    next_y = sine[sine_yc] >> 5;
+  //next_y = 0;
+  next_addr = ((next_y & 0xfb) << 2) | (next_x >> 3);
+  next_addr = 0x2;
+  next_addr_hi = 0b100;
+  next_addr_lo = ((next_y & 0xfb) << 2) | (next_x >> 3);
+  next_addr_lo = next_x >> 3;
 }
 
 void __fastcall__ irq_nmi_callback(void) {
@@ -85,13 +91,15 @@ void __fastcall__ irq_nmi_callback(void) {
 //    scroll(sine[irq_count], sine[irq_count]);
     //PPU.scroll = next_x;
     //PPU.scroll = next_y;
-    scroll(next_x, next_y);
+    //scroll(next_x, next_y);
     //PEEK(PPU_STATUS);
     //POKE(PPU_ADDR, 0x20);
     //POKE(PPU_ADDR, 0x40);
     //POKEW(PPU_ADDR, next_addr);
-    POKE(PPU_SCROLL, next_x);
+    POKE(PPU_ADDR, next_addr_hi);
     POKE(PPU_SCROLL, next_y);
+    POKE(PPU_SCROLL, next_x);
+    POKE(PPU_ADDR, next_addr_lo);
     //POKE(PPU_CTRL, 0x40);
     /*
 	bit PPU_STATUS
@@ -120,11 +128,13 @@ void __fastcall__ irq_nmi_callback(void) {
     // reset scroll counter
     sine_xo++;
     sine_xc = sine_xo;
-    if (sine_xo & 0x01) sine_yo++;
+    sine_yo++;
     sine_yc = sine_yo;
     sine_pos_next();
-    POKE(PPU_SCROLL, next_x);
+    POKE(PPU_ADDR, next_addr_hi);
     POKE(PPU_SCROLL, next_y);
+    POKE(PPU_SCROLL, next_x);
+    POKE(PPU_ADDR, next_addr_lo);
   }
 }
 
