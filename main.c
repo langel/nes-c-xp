@@ -44,6 +44,8 @@
 //#link "vrambuf.c"
 
 byte i;
+byte irq_inc; // number of lines between interrupts
+byte irq_pos; // current scanline position
 byte sine_xo; // origin point of screen
 byte sine_yo;
 byte sine_xc; // offset point for interupt
@@ -70,14 +72,15 @@ const char PALETTE[32] = {
 void __fastcall__ sine_pos_next(void) {
     // advance to next scroll value
     sine_xc += 11;
-    next_x = (sine[sine_xc] >> 2) - 52;
+    next_x = (sine[sine_xc] >> 2) + 204;
   //next_x = 0;
     //if (sine_xc & 0x07) sine_yc++;
     sine_yc += 17;
-    next_y = sine[sine_yc] >> 5;
+    next_y = (sine[sine_yc] >> 5);// + irq_pos;
+  irq_pos += irq_inc;
   //next_y = 0;
-  next_addr = ((next_y & 0xfb) << 2) | (next_x >> 3);
-  next_addr = 0x2;
+  //next_addr = ((next_y & 0xfb) << 2) | (next_x >> 3);
+  //next_addr = 0x2;
   next_addr_hi = 0b100;
   next_addr_lo = ((next_y & 0xfb) << 2) | (next_x >> 3);
   next_addr_lo = next_x >> 3;
@@ -88,19 +91,10 @@ void __fastcall__ irq_nmi_callback(void) {
   if (__A__ & 0x80) {
     // it's an IRQ from the MMC3 mapper
     // change PPU scroll registers
-//    scroll(sine[irq_count], sine[irq_count]);
-    //PPU.scroll = next_x;
-    //PPU.scroll = next_y;
-    //scroll(next_x, next_y);
-    //PEEK(PPU_STATUS);
-    //POKE(PPU_ADDR, 0x20);
-    //POKE(PPU_ADDR, 0x40);
-    //POKEW(PPU_ADDR, next_addr);
     POKE(PPU_ADDR, next_addr_hi);
     POKE(PPU_SCROLL, next_y);
     POKE(PPU_SCROLL, next_x);
     POKE(PPU_ADDR, next_addr_lo);
-    //POKE(PPU_CTRL, 0x40);
     /*
 	bit PPU_STATUS
         lda scroll_x_hi
@@ -124,6 +118,7 @@ void __fastcall__ irq_nmi_callback(void) {
   } else {
     // this is a NMI
     // reload IRQ counter
+    irq_pos = 0;
     MMC3_IRQ_RELOAD();
     // reset scroll counter
     sine_xo++;
@@ -155,7 +150,8 @@ void main(void) {
   // Mirroring - horizontal
   POKE(0xA000, 0x01);
   // set up MMC3 IRQs every 8 scanlines
-  MMC3_IRQ_SET_VALUE(7);
+  irq_inc = 7;
+  MMC3_IRQ_SET_VALUE(irq_inc);
   MMC3_IRQ_RELOAD();
   MMC3_IRQ_ENABLE();
   // enable CPU IRQ
@@ -170,11 +166,9 @@ void main(void) {
   // draw message  
   for (i = 0; i < 30; i += 2) {
     vram_adr(NTADR_A(0, i));
-    vram_write("HELLO, WORLD! ", 14);
-    vram_write("HELLO, WORLD! ", 14);
+    vram_write(" HELLOo0oOO MMC3 WORLD! ", 24);
     vram_adr(NTADR_C(0, i));
-    vram_write("HELLO, WORLD! ", 14);
-    vram_write("HELLO, WORLD! ", 14);
+    vram_write(" HELLOo0oOO MMC3 WORLD! ", 24);
   }
   // enable rendering
   ppu_on_all();
