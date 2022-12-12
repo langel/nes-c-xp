@@ -14,8 +14,10 @@
 
 // "strobe" means "write any value"
 #define STROBE(addr) __asm__ ("sta %w", addr)
+// "blit" clears PPU 1sr/2nd write toggle
+#define BLIT() __asm__ ("bit $2002")
 
-#define MMC3_IRQ_SET_VALUE(n) POKE(0xc000, (n));
+#define MMC3_IRQ_SET_VALUE(n) POKE(0xc000, (n))
 #define MMC3_IRQ_RELOAD()     STROBE(0xc001)
 #define MMC3_IRQ_DISABLE()    STROBE(0xe000)
 #define MMC3_IRQ_ENABLE()     STROBE(0xe001)
@@ -43,6 +45,8 @@
 #include "vrambuf.h"
 //#link "vrambuf.c"
 
+#define IRQ_RATE 11
+
 byte i;
 byte irq_inc; // number of lines between interrupts
 byte irq_pos; // current scanline position
@@ -55,6 +59,7 @@ byte next_y;
 byte next_addr;
 byte next_addr_hi;
 byte next_addr_lo;
+word temp;
 
 
 /*{pal:"nes",layout:"nes"}*/
@@ -72,18 +77,21 @@ const char PALETTE[32] = {
 void __fastcall__ sine_pos_next(void) {
     // advance to next scroll value
     sine_xc += 11;
-    next_x = (sine[sine_xc] >> 2) + 204;
-  //next_x = 0;
-    //if (sine_xc & 0x07) sine_yc++;
-    sine_yc += 17;
-    next_y = (sine[sine_yc] >> 5);// + irq_pos;
+    next_x = (sine[sine_xc] >> 2) + 192;
+    sine_yc += irq_inc;
+  temp = (sine[sine_yc] >> 2) + irq_pos;
+  next_y = temp;
+  next_addr_hi = 0;
+  if (temp >= 240) {
+    next_y = temp - 240;
+    next_addr_hi = 4;
+  }
+  next_y = (temp < 240) ? temp : temp - 240;
+  //next_y = (sine[sine_yc] >> 3) + irq_pos;
   irq_pos += irq_inc;
-  //next_y = 0;
-  //next_addr = ((next_y & 0xfb) << 2) | (next_x >> 3);
-  //next_addr = 0x2;
-  next_addr_hi = 0b100;
-  next_addr_lo = ((next_y & 0xfb) << 2) | (next_x >> 3);
-  next_addr_lo = next_x >> 3;
+  // addr_hi is the nametable id
+  next_addr_hi = next_addr_hi << 2;
+  next_addr_lo = ((next_y & 0xf8) << 2) | (next_x >> 3);
 }
 
 void __fastcall__ irq_nmi_callback(void) {
@@ -91,6 +99,18 @@ void __fastcall__ irq_nmi_callback(void) {
   if (__A__ & 0x80) {
     // it's an IRQ from the MMC3 mapper
     // change PPU scroll registers
+    BLIT();
+    BLIT();
+    BLIT();
+    BLIT();
+    BLIT();
+    BLIT();
+    BLIT();
+    BLIT();
+    BLIT();
+    BLIT();
+    BLIT();
+    BLIT();
     POKE(PPU_ADDR, next_addr_hi);
     POKE(PPU_SCROLL, next_y);
     POKE(PPU_SCROLL, next_x);
@@ -114,18 +134,21 @@ void __fastcall__ irq_nmi_callback(void) {
     sine_pos_next();
     // acknowledge interrupt
     MMC3_IRQ_DISABLE();
-    MMC3_IRQ_ENABLE();
-  } else {
+    if (irq_pos < 188) MMC3_IRQ_ENABLE();
+  } 
+  else {
     // this is a NMI
     // reload IRQ counter
     irq_pos = 0;
     MMC3_IRQ_RELOAD();
+    MMC3_IRQ_ENABLE();
     // reset scroll counter
-    sine_xo++;
+    sine_xo += 2;
     sine_xc = sine_xo;
-    sine_yo++;
+    sine_yo += 3;
     sine_yc = sine_yo;
     sine_pos_next();
+    //BLIT();
     POKE(PPU_ADDR, next_addr_hi);
     POKE(PPU_SCROLL, next_y);
     POKE(PPU_SCROLL, next_x);
@@ -150,7 +173,7 @@ void main(void) {
   // Mirroring - horizontal
   POKE(0xA000, 0x01);
   // set up MMC3 IRQs every 8 scanlines
-  irq_inc = 7;
+  irq_inc = IRQ_RATE;
   MMC3_IRQ_SET_VALUE(irq_inc);
   MMC3_IRQ_RELOAD();
   MMC3_IRQ_ENABLE();
@@ -160,9 +183,9 @@ void main(void) {
   nmi_set_callback(irq_nmi_callback);
   // fill vram
   vram_adr(NTADR_A(0,0));
-  vram_fill('-', 32*30);
+  vram_fill(' ', 32*30);
   vram_adr(NTADR_C(0,0));
-  vram_fill('-', 32*30);
+  vram_fill('~', 32*30);
   // draw message  
   for (i = 0; i < 30; i += 2) {
     vram_adr(NTADR_A(0, i));
